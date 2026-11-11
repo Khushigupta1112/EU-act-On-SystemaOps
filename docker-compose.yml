@@ -1,0 +1,198 @@
+# SystemaOps AI Compliance Platform — Development Stack
+# Services: PostgreSQL 16, Redis 7, FastAPI backend, Next.js frontend, Adminer
+#
+# Usage:
+#   docker-compose up -d          # Start all services
+#   docker-compose logs -f        # Follow logs
+#   docker-compose down -v        # Stop and remove volumes
+
+version: '3.9'
+
+services:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PostgreSQL 16 — Primary relational database
+  # ─────────────────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: systemaops_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: systemaops
+      POSTGRES_USER: systemaops
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-systemaops_dev}
+      # Performance tuning for development
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=en_US.UTF-8 --lc-ctype=en_US.UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U systemaops -d systemaops"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - systemaops_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Redis 7 — Caching, session store, and task queue broker
+  # ─────────────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: systemaops_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-redis_dev}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save 60 1
+      --loglevel notice
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_dev}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - systemaops_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Backend — FastAPI application (async, multi-tenant)
+  # ─────────────────────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: systemaops_backend
+    restart: unless-stopped
+    environment:
+      # Database
+      DATABASE_URL: postgresql+asyncpg://systemaops:${POSTGRES_PASSWORD:-systemaops_dev}@postgres:5432/systemaops
+      DATABASE_URL_SYNC: postgresql+psycopg2://systemaops:${POSTGRES_PASSWORD:-systemaops_dev}@postgres:5432/systemaops
+      # Redis
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_dev}@redis:6379/0
+      # Security
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production-min-32-chars!!}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      ALGORITHM: HS256
+      # Application
+      ENVIRONMENT: development
+      DEBUG: "true"
+      LOG_LEVEL: DEBUG
+      CORS_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000"]'
+      # Optional integrations
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      EMAILS_FROM_EMAIL: ${EMAILS_FROM_EMAIL:-noreply@systemaops.local}
+    volumes:
+      - ./backend:/app
+      - backend_venv:/app/.venv  # Persist virtual environment across restarts
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug
+    networks:
+      - systemaops_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Frontend — Next.js 14 (App Router)
+  # ─────────────────────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development
+    container_name: systemaops_frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_APP_NAME: SystemaOps
+      NEXT_PUBLIC_APP_VERSION: ${APP_VERSION:-0.1.0}
+      # Internal server-side API URL (within Docker network)
+      INTERNAL_API_URL: http://backend:8000
+      NODE_ENV: development
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules    # Anonymous volume to prevent host override
+      - /app/.next           # Anonymous volume for Next.js build cache
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - backend
+    networks:
+      - systemaops_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Adminer — Lightweight database administration UI
+  # Access: http://localhost:8080
+  # System: PostgreSQL | Server: postgres | User: systemaops
+  # ─────────────────────────────────────────────────────────────────────────────
+  adminer:
+    image: adminer:4-standalone
+    container_name: systemaops_adminer
+    restart: unless-stopped
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: dracula
+    ports:
+      - "${ADMINER_PORT:-8080}:8080"
+    depends_on:
+      - postgres
+    networks:
+      - systemaops_net
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Named volumes — persist data between container restarts
+# ─────────────────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  backend_venv:
+    driver: local
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Networks — isolated bridge network for service communication
+# ─────────────────────────────────────────────────────────────────────────────
+networks:
+  systemaops_net:
+    driver: bridge
+    name: systemaops_network
