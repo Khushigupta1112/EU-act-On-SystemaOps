@@ -41,7 +41,7 @@ export default function LoginPage() {
         </div>
         <CardTitle className="text-xl font-bold tracking-tight">Enterprise Sign In</CardTitle>
         <CardDescription className="text-slate-400 text-xs">
-          Access your organization's AI Compliance Control Plane
+          Access your organization&apos;s AI Compliance Control Plane
         </CardDescription>
       </CardHeader>
       <CardContent>
