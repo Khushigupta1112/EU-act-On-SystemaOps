@@ -30,14 +30,14 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     APP_NAME: str = "SystemaOps"
     APP_VERSION: str = "0.1.0"
-    ENVIRONMENT: Literal["development", "staging", "production"] = "development"
+    ENVIRONMENT: Literal["development", "staging", "production", "testing"] = "development"
     DEBUG: bool = False
 
     # -------------------------------------------------------------------------
     # Database
     # -------------------------------------------------------------------------
-    DATABASE_URL: PostgresDsn = Field(
-        ...,
+    DATABASE_URL: PostgresDsn | str = Field(
+        default="postgresql+asyncpg://systemaops:systemaops_dev@localhost:5432/systemaops",
         description="Async PostgreSQL DSN (asyncpg driver). "
         "Example: postgresql+asyncpg://user:pass@host:5432/db",
     )

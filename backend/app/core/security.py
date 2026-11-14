@@ -34,6 +34,9 @@ def hash_password(plain: str) -> str:
     return _pwd_context.hash(plain)
 
 
+get_password_hash = hash_password  # Alias for backward compatibility
+
+
 def verify_password(plain: str, hashed: str) -> bool:
     """Return True if *plain* matches the stored *hashed* password."""
     return _pwd_context.verify(plain, hashed)
