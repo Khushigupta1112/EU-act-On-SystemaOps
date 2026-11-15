@@ -119,6 +119,7 @@ class TokenResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     expires_in: int = Field(..., description="Access token TTL in seconds.")
+    user: dict | None = None
 
 
 class UserResponse(BaseModel):
@@ -142,7 +143,18 @@ class UserResponse(BaseModel):
 class MeResponse(BaseModel):
     """Extended profile response for GET /auth/me."""
 
-    user: UserResponse
-    memberships: list[dict]  # org_id, org_name, role, is_primary
+    id: UUID
+    email: str
+    full_name: str
+    is_active: bool
+    is_verified: bool
+    is_superuser: bool
+    avatar_url: str | None = None
+    timezone: str = "UTC"
+    locale: str = "en"
+    last_login: datetime | None = None
+    created_at: datetime | None = None
+    user: UserResponse | None = None
+    memberships: list[dict] = Field(default_factory=list)  # org_id, org_name, role, is_primary
 
     model_config = {"from_attributes": True}

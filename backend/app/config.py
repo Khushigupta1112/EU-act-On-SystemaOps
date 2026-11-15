@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import secrets
 from functools import lru_cache
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import AnyHttpUrl, EmailStr, Field, PostgresDsn, field_validator
+from pydantic import AnyHttpUrl, EmailStr, Field, PostgresDsn, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -131,6 +131,32 @@ class Settings(BaseSettings):
         if len(v) < 32:
             raise ValueError("SECRET_KEY must be at least 32 characters long.")
         return v
+
+    @model_validator(mode="after")
+    def validate_environment_and_security(self) -> Self:
+        """Enforce strict configuration rules based on environment."""
+        dsn = str(self.DATABASE_URL)
+        valid_schemes = ("postgresql+asyncpg://", "sqlite+aiosqlite://", "sqlite://")
+        if not any(dsn.startswith(s) for s in valid_schemes):
+            raise ValueError(
+                "DATABASE_URL must start with 'postgresql+asyncpg://' (or 'sqlite+aiosqlite://' / 'sqlite://' for testing)."
+            )
+
+        dev_passwords = ("systemaops_dev", "postgres", "password", "admin", "dev")
+        if self.ENVIRONMENT in ("production", "staging"):
+            if "localhost" in dsn or "127.0.0.1" in dsn:
+                raise ValueError(
+                    f"DATABASE_URL cannot point to localhost/127.0.0.1 in {self.ENVIRONMENT} environment."
+                )
+            if any(p in dsn for p in dev_passwords):
+                raise ValueError(
+                    f"DATABASE_URL cannot use default/development credentials in {self.ENVIRONMENT} environment."
+                )
+            if self.SECRET_KEY.startswith("dev-") or len(self.SECRET_KEY) < 32:
+                raise ValueError(
+                    f"A secure, non-development SECRET_KEY of at least 32 characters is required in {self.ENVIRONMENT}."
+                )
+        return self
 
     # -------------------------------------------------------------------------
     # Convenience properties

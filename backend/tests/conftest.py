@@ -33,7 +33,7 @@ TestingSessionLocal = async_sessionmaker(
     expire_on_commit=False,
 )
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture
 async def prepare_database():
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -143,13 +143,19 @@ async def setup_tenants(db_session: AsyncSession):
     await db_session.commit()
 
     token_a = create_access_token(
-        data={"sub": str(user_a.id), "org_id": str(org_a.id), "role": UserRole.ORG_ADMIN.value}
+        user_id=user_a.id,
+        organization_id=org_a.id,
+        role=UserRole.ORG_ADMIN.value,
     )
     token_b = create_access_token(
-        data={"sub": str(user_b.id), "org_id": str(org_b.id), "role": UserRole.ORG_ADMIN.value}
+        user_id=user_b.id,
+        organization_id=org_b.id,
+        role=UserRole.ORG_ADMIN.value,
     )
     token_readonly = create_access_token(
-        data={"sub": str(user_readonly.id), "org_id": str(org_a.id), "role": UserRole.READ_ONLY.value}
+        user_id=user_readonly.id,
+        organization_id=org_a.id,
+        role=UserRole.READ_ONLY.value,
     )
 
     return {

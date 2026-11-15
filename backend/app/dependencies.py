@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from fastapi import Depends, Header, HTTPException, Path
+from fastapi import Depends, Header, HTTPException, Path, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -73,6 +73,18 @@ async def get_current_user(
         raise HTTPException(status_code=403, detail="User account is disabled.")
     if user.is_locked:
         raise HTTPException(status_code=403, detail="Account is temporarily locked.")
+
+    org_id_str = payload.get("org_id")
+    role_str = payload.get("role")
+    setattr(user, "token_payload", payload)
+    try:
+        setattr(user, "current_organization_id", UUID(org_id_str) if org_id_str else None)
+    except ValueError:
+        setattr(user, "current_organization_id", None)
+    try:
+        setattr(user, "current_role", UserRole(role_str) if role_str else None)
+    except ValueError:
+        setattr(user, "current_role", None)
 
     return user
 
@@ -143,6 +155,8 @@ def get_org_member_dependency(require_role: UserRole | None = None):
 def require_permission(permission: Permission):
     """
     Dependency factory that enforces a specific permission on the current member.
+    Resolves organization scope from URL path parameter {org_slug} or from the authenticated
+    user's token context and membership.
 
     Usage::
 
@@ -154,14 +168,95 @@ def require_permission(permission: Permission):
     """
 
     async def _check(
-        member: OrganizationMember = Depends(get_org_member_dependency()),
+        request: Request,
+        current_user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
     ) -> OrganizationMember:
-        role = UserRole(member.role)
+        from sqlalchemy import select
+
+        org_slug = request.path_params.get("org_slug")
+        org_id: UUID | None = None
+        role: UserRole | None = None
+
+        if current_user.is_superuser:
+            role = UserRole.SUPER_ADMIN
+            if org_slug:
+                org_result = await db.execute(
+                    select(Organization).where(
+                        Organization.slug == org_slug,
+                        Organization.deleted_at.is_(None),
+                    )
+                )
+                org = org_result.scalar_one_or_none()
+                if org is None:
+                    raise HTTPException(status_code=404, detail="Organisation not found.")
+                org_id = org.id
+            else:
+                org_id = getattr(current_user, "current_organization_id", None)
+        else:
+            if org_slug:
+                org_result = await db.execute(
+                    select(Organization).where(
+                        Organization.slug == org_slug,
+                        Organization.deleted_at.is_(None),
+                    )
+                )
+                org = org_result.scalar_one_or_none()
+                if org is None:
+                    raise HTTPException(status_code=404, detail="Organisation not found.")
+                org_id = org.id
+
+                member_result = await db.execute(
+                    select(OrganizationMember).where(
+                        OrganizationMember.organization_id == org.id,
+                        OrganizationMember.user_id == current_user.id,
+                    )
+                )
+                member: OrganizationMember | None = member_result.scalar_one_or_none()
+                if member is None:
+                    raise HTTPException(
+                        status_code=403, detail="You are not a member of this organisation."
+                    )
+                role = UserRole(member.role)
+            else:
+                org_id = getattr(current_user, "current_organization_id", None)
+                role = getattr(current_user, "current_role", None)
+
+                if not org_id:
+                    member_result = await db.execute(
+                        select(OrganizationMember).where(
+                            OrganizationMember.user_id == current_user.id,
+                            OrganizationMember.is_primary.is_(True),
+                        )
+                    )
+                    member = member_result.scalar_one_or_none()
+                    if member:
+                        org_id = member.organization_id
+                        role = UserRole(member.role)
+                    else:
+                        raise HTTPException(status_code=400, detail="No active organisation context.")
+                elif not role:
+                    member_result = await db.execute(
+                        select(OrganizationMember).where(
+                            OrganizationMember.organization_id == org_id,
+                            OrganizationMember.user_id == current_user.id,
+                        )
+                    )
+                    member = member_result.scalar_one_or_none()
+                    if not member:
+                        raise HTTPException(status_code=403, detail="You are not a member of this organisation.")
+                    role = UserRole(member.role)
+
         if not has_permission(role, permission):
             raise HTTPException(
                 status_code=403,
                 detail=f"Permission '{permission.value}' required.",
             )
-        return member
+
+        virtual = OrganizationMember()
+        virtual.organization_id = org_id
+        virtual.user_id = current_user.id
+        virtual.role = role.value
+        return virtual
 
     return _check

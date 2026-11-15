@@ -53,7 +53,7 @@ class User(BaseModel):
     )
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True, index=True
+        Boolean, nullable=False, default=True
     )
     is_verified: Mapped[bool] = mapped_column(
         Boolean,

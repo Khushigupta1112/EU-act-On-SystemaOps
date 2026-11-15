@@ -22,6 +22,7 @@ class AISystemCreate(BaseModel):
     business_domain: str | None = None
     user_count_estimate: int | None = Field(None, ge=0)
     data_categories: list[str] = Field(default_factory=list)
+    risk_classification: RiskClassification = RiskClassification.UNCLASSIFIED
     lifecycle_status: AISystemStatus = AISystemStatus.DRAFT
     review_date: date | None = None
     metadata_: dict = Field(default_factory=dict, alias="metadata")
@@ -41,6 +42,7 @@ class AISystemUpdate(BaseModel):
     business_domain: str | None = None
     user_count_estimate: int | None = Field(None, ge=0)
     data_categories: list[str] | None = None
+    risk_classification: RiskClassification | None = None
     lifecycle_status: AISystemStatus | None = None
     review_date: date | None = None
     metadata_: dict | None = Field(None, alias="metadata")

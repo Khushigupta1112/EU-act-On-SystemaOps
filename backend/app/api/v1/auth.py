@@ -171,6 +171,12 @@ async def register(
         access_token=access_token,
         refresh_token=refresh_token,
         expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        user={
+            "id": str(user.id),
+            "email": user.email,
+            "full_name": user.full_name,
+            "organization_slug": org.slug,
+        },
     )
 
 
@@ -248,6 +254,15 @@ async def login(
     org_id = member.organization_id if member else None
     role = member.role if member else UserRole.READ_ONLY.value
 
+    org_slug = None
+    if org_id:
+        org_result = await db.execute(
+            select(Organization).where(Organization.id == org_id)
+        )
+        org_obj = org_result.scalar_one_or_none()
+        if org_obj:
+            org_slug = org_obj.slug
+
     await create_audit_event(
         db, AuditAction.USER_LOGIN,
         actor_id=user.id, actor_email=user.email,
@@ -267,6 +282,12 @@ async def login(
         access_token=access_token,
         refresh_token=refresh_token,
         expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        user={
+            "id": str(user.id),
+            "email": user.email,
+            "full_name": user.full_name,
+            "organization_slug": org_slug,
+        },
     )
 
 
@@ -404,8 +425,20 @@ async def get_me(
         for member, org in memberships_result.all()
     ]
 
+    user_resp = UserResponse.model_validate(current_user)
     return MeResponse(
-        user=UserResponse.model_validate(current_user),
+        id=current_user.id,
+        email=current_user.email,
+        full_name=current_user.full_name,
+        is_active=current_user.is_active,
+        is_verified=current_user.is_verified,
+        is_superuser=current_user.is_superuser,
+        avatar_url=current_user.avatar_url,
+        timezone=current_user.timezone,
+        locale=current_user.locale,
+        last_login=current_user.last_login,
+        created_at=current_user.created_at,
+        user=user_resp,
         memberships=memberships,
     )
 

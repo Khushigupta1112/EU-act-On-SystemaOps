@@ -95,7 +95,6 @@ class AISystem(BaseModel):
         PgUUID(as_uuid=True),
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
         comment="Tenant boundary — MUST be filtered on every query.",
     )
 
@@ -109,7 +108,6 @@ class AISystem(BaseModel):
         PgUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
-        index=True,
     )
     department: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
@@ -141,13 +139,11 @@ class AISystem(BaseModel):
         SaEnum(RiskClassification, name="risk_classification"),
         nullable=False,
         default=RiskClassification.UNCLASSIFIED,
-        index=True,
     )
     lifecycle_status: Mapped[AISystemStatus] = mapped_column(
         SaEnum(AISystemStatus, name="ai_system_status"),
         nullable=False,
         default=AISystemStatus.DRAFT,
-        index=True,
     )
     regulatory_status: Mapped[str | None] = mapped_column(String(100), nullable=True)
 

@@ -13,6 +13,12 @@ from typing import Any
 from uuid import UUID
 
 from jose import JWTError, jwt
+import bcrypt
+
+# Ensure passlib recognizes modern bcrypt version cleanly
+if not hasattr(bcrypt, "__about__"):
+    bcrypt.__about__ = type("about", (), {"__version__": bcrypt.__version__})()
+
 from passlib.context import CryptContext
 
 from app.config import settings
@@ -31,6 +37,8 @@ _pwd_context = CryptContext(
 
 def hash_password(plain: str) -> str:
     """Return a bcrypt hash of *plain*. Never store plain-text passwords."""
+    if len(plain.encode("utf-8")) > 72:
+        raise ValueError("Password cannot exceed 72 bytes to prevent bcrypt silent truncation.")
     return _pwd_context.hash(plain)
 
 
@@ -39,6 +47,8 @@ get_password_hash = hash_password  # Alias for backward compatibility
 
 def verify_password(plain: str, hashed: str) -> bool:
     """Return True if *plain* matches the stored *hashed* password."""
+    if len(plain.encode("utf-8")) > 72:
+        return False
     return _pwd_context.verify(plain, hashed)
 
 

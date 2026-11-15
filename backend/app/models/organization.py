@@ -73,7 +73,6 @@ class Organization(BaseModel):
         SaEnum(OrganizationStatus, name="organization_status"),
         nullable=False,
         default=OrganizationStatus.TRIAL,
-        index=True,
     )
     plan: Mapped[str] = mapped_column(
         String(50),

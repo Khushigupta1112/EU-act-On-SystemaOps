@@ -59,7 +59,6 @@ class AuditEvent(Base):
     organization_id: Mapped[uuid.UUID | None] = mapped_column(
         PgUUID(as_uuid=True),
         nullable=True,
-        index=True,
         comment="NULL for platform-level events (e.g. new org created).",
     )
     actor_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -104,7 +103,6 @@ class AuditEvent(Base):
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False,
-        index=True,
     )
 
     def __repr__(self) -> str:  # pragma: no cover
